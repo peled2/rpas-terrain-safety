@@ -41,21 +41,21 @@ describe('terrain math', () => {
   it('applies zoom tier hysteresis to prevent thrashing on small zoom changes', () => {
     expect(selectDemZoomTier(8.0, null)).toBeNull();
     expect(selectDemZoomTier(11.0, null)).toBe(12);
-    // Gentle zoom from 12.4 to 12.6 stays on tier 12 until 12.85
+    // Gentle zoom from 12.4 to 12.6 stays on tier 12 until 13.0
     expect(selectDemZoomTier(12.6, 12)).toBe(12);
-    expect(selectDemZoomTier(12.9, 12)).toBe(14);
-    // Gentle zoom out from 12.9 to 12.2 stays on tier 14 until 12.0
+    expect(selectDemZoomTier(13.1, 12)).toBe(14);
+    // Gentle zoom out from 13.1 to 12.2 stays on tier 14 until 12.2
     expect(selectDemZoomTier(12.2, 14)).toBe(14);
-    expect(selectDemZoomTier(11.9, 14)).toBe(12);
+    expect(selectDemZoomTier(12.1, 14)).toBe(12);
   });
 
   it('builds overscan computation envelope covering small pans without recompute', () => {
-    const viewport = { west: 35.6, south: 33.0, east: 35.8, north: 33.2 };
+    const viewport = { west: 35.65, south: 33.05, east: 35.79, north: 33.19 };
     const env = buildComputationEnvelope(viewport, 12, 1000);
     expect(isViewportInsideBounds(viewport, env.safeInnerBounds)).toBe(true);
 
     // Small pan inside overscan margin
-    const smallPan = { west: 35.63, south: 33.02, east: 35.83, north: 33.22 };
+    const smallPan = { west: 35.665, south: 33.065, east: 35.805, north: 33.205 };
     expect(isViewportInsideBounds(smallPan, env.safeInnerBounds)).toBe(true);
 
     // Large pan outside overscan margin

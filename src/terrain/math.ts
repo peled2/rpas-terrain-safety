@@ -6,8 +6,8 @@ export const EARTH_CIRCUMFERENCE_METERS = 40075016.68557849;
 export const TILE_SIZE = 256;
 export const MAX_DEM_ZOOM = 15;
 export const MIN_SUPPORTED_MAP_ZOOM = 8.5;
-export const MAX_GRID_DIMENSION = 768;
-export const MAX_TILES_PER_JOB = 49;
+export const MAX_GRID_DIMENSION = 512;
+export const MAX_TILES_PER_JOB = 20;
 
 export function feetToMeters(feet: number): number {
   return feet * FEET_TO_METERS;
@@ -62,18 +62,18 @@ export function selectDemZoomTier(mapZoom: number, currentDemZoom: number | null
   }
 
   if (currentDemZoom === 14) {
-    if (mapZoom >= 12.0) return 14;
+    if (mapZoom >= 12.2) return 14;
   } else if (currentDemZoom === 12) {
-    if (mapZoom >= 12.85) return 14;
-    if (mapZoom >= 10.0) return 12;
+    if (mapZoom >= 13.0) return 14;
+    if (mapZoom >= 10.2) return 12;
   } else if (currentDemZoom === 10) {
-    if (mapZoom >= 12.85) return 14;
-    if (mapZoom >= 10.85) return 12;
+    if (mapZoom >= 13.0) return 14;
+    if (mapZoom >= 11.0) return 12;
     if (mapZoom >= 8.5) return 10;
   }
 
-  if (mapZoom >= 12.5) return 14;
-  if (mapZoom >= 10.5) return 12;
+  if (mapZoom >= 12.6) return 14;
+  if (mapZoom >= 10.6) return 12;
   return 10;
 }
 
@@ -105,12 +105,12 @@ export function buildComputationEnvelope(
   viewport: BBox,
   demZoom: number,
   safetyRangeMeters: number,
-  overscanRatio = 0.45,
+  overscanRatio = 0.4,
 ): ComputationEnvelope {
   const lonSpan = Math.max(0.001, viewport.east - viewport.west);
   const latSpan = Math.max(0.001, viewport.north - viewport.south);
 
-  const candidateRatios = [overscanRatio, 0.25, 0.12].filter(
+  const candidateRatios = [overscanRatio, 0.2, 0.1].filter(
     (r, idx, arr) => r > 0 && arr.indexOf(r) === idx,
   );
 
@@ -138,10 +138,11 @@ export function buildComputationEnvelope(
     }
   }
 
-  // Fallback to tight viewport + safety padding when zoomed very wide for the tier.
+  // Fallback to tight viewport + safety padding, and resolve effective demZoom.
   const tightFetch = expandBBoxByMeters(viewport, safetyRangeMeters);
+  const metrics = resolveGridMetrics(tightFetch, demZoom);
   return {
-    demZoom,
+    demZoom: metrics.demZoom,
     fetchBounds: tightFetch,
     safeInnerBounds: viewport,
     safetyRangeMeters,

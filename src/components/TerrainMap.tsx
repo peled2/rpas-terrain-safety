@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import * as maplibregl from 'maplibre-gl';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {
   buildComputationEnvelope,
@@ -95,6 +96,7 @@ export function TerrainMap({
   const baseMapRef = useRef(baseMap);
   const envelopeRef = useRef<ComputationEnvelope | null>(null);
   const latestRequestedJobIdRef = useRef(0);
+  const pendingResultRef = useRef<TerrainComputeResult | null>(null);
   const debounceTimerRef = useRef<number | null>(null);
   const probeTimerRef = useRef<number>(0);
 
@@ -108,6 +110,29 @@ export function TerrainMap({
   useEffect(() => {
     onProbeRef.current = onProbeChange;
   }, [onProbeChange]);
+
+  const applyResultToMap = useCallback((result: TerrainComputeResult) => {
+    const map = mapRef.current;
+    if (!map || !mapLoadedRef.current) {
+      pendingResultRef.current = result;
+      return;
+    }
+
+    const safetyFillSrc = map.getSource('safety-fill-source') as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    const safetyOutlineSrc = map.getSource('safety-outline-source') as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    const contourSrc = map.getSource('contour-source') as
+      | maplibregl.GeoJSONSource
+      | undefined;
+
+    safetyFillSrc?.setData(result.safetyFillGeoJson);
+    safetyOutlineSrc?.setData(result.safetyOutlineGeoJson);
+    contourSrc?.setData(result.contourGeoJson);
+    pendingResultRef.current = null;
+  }, []);
 
   const triggerCompute = useCallback((forceRebuildEnvelope: boolean) => {
     const map = mapRef.current;
@@ -200,24 +225,11 @@ export function TerrainMap({
 
     const client = new TerrainClient(
       (result: TerrainComputeResult) => {
-        if (result.jobId !== latestRequestedJobIdRef.current) return;
-
-        const map = mapRef.current;
-        if (map && mapLoadedRef.current) {
-          const safetyFillSrc = map.getSource('safety-fill-source') as
-            | maplibregl.GeoJSONSource
-            | undefined;
-          const safetyOutlineSrc = map.getSource('safety-outline-source') as
-            | maplibregl.GeoJSONSource
-            | undefined;
-          const contourSrc = map.getSource('contour-source') as
-            | maplibregl.GeoJSONSource
-            | undefined;
-
-          safetyFillSrc?.setData(result.safetyFillGeoJson);
-          safetyOutlineSrc?.setData(result.safetyOutlineGeoJson);
-          contourSrc?.setData(result.contourGeoJson);
+        if (result.jobId !== latestRequestedJobIdRef.current && result.jobId !== 0) {
+          return;
         }
+
+        applyResultToMap(result);
 
         onStatsRef.current({
           isComputing: false,
@@ -246,6 +258,10 @@ export function TerrainMap({
     clientRef.current = client;
 
     const initialBaseMap = baseMapRef.current;
+    maplibregl.config.WORKER_URL = maplibreWorkerUrl;
+    if (maplibregl.getWorkerUrl() !== maplibreWorkerUrl) {
+      maplibregl.setWorkerUrl(maplibreWorkerUrl);
+    }
 
     const map = new maplibregl.Map({
       container: containerRef.current,
@@ -375,10 +391,17 @@ export function TerrainMap({
 
     mapRef.current = map;
 
-    map.on('load', () => {
+    const handleReady = () => {
+      if (mapLoadedRef.current) return;
       mapLoadedRef.current = true;
+      if (pendingResultRef.current) {
+        applyResultToMap(pendingResultRef.current);
+      }
       triggerCompute(true);
-    });
+    };
+
+    map.on('style.load', handleReady);
+    map.on('load', handleReady);
 
     const scheduleViewportCheck = () => {
       if (lockedRef.current) return;
@@ -419,7 +442,7 @@ export function TerrainMap({
       clientRef.current = null;
       mapLoadedRef.current = false;
     };
-  }, [triggerCompute]);
+  }, [applyResultToMap, triggerCompute]);
 
   // Switch satellite / topo base layer cleanly
   useEffect(() => {

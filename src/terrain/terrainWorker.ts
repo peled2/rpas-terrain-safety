@@ -54,6 +54,8 @@ function putTileInCache(key: string, data: Float32Array): void {
   }
 }
 
+const FETCH_TIMEOUT_MS = 12000;
+
 async function fetchTerrariumTile(
   z: number,
   x: number,
@@ -65,7 +67,26 @@ async function fetchTerrariumTile(
   if (cached) return cached;
 
   const url = `${TERRARIUM_URL}/${z}/${x}/${y}.png`;
-  const response = await fetch(url, { mode: 'cors', signal });
+  const timeoutController = new AbortController();
+  const timer = setTimeout(() => timeoutController.abort(), FETCH_TIMEOUT_MS);
+  const onParentAbort = () => timeoutController.abort();
+  signal.addEventListener('abort', onParentAbort, { once: true });
+
+  let response: Response;
+  try {
+    response = await fetch(url, { mode: 'cors', signal: timeoutController.signal });
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener('abort', onParentAbort);
+  }
+
+  if (response.status === 404) {
+    // Ocean / out-of-coverage Terrarium tile defaults to sea level (0m)
+    const zeroTile = new Float32Array(TILE_SIZE * TILE_SIZE);
+    putTileInCache(key, zeroTile);
+    return zeroTile;
+  }
+
   if (!response.ok) {
     throw new Error(`HTTP ${response.status} loading DEM tile ${key}`);
   }
@@ -100,7 +121,7 @@ async function fetchTerrariumTile(
 async function fetchTilesWithConcurrency(
   coords: Array<{ z: number; x: number; y: number }>,
   signal: AbortSignal,
-  concurrency = 8,
+  concurrency = 10,
 ): Promise<Map<string, Float32Array>> {
   const result = new Map<string, Float32Array>();
   let cursor = 0;

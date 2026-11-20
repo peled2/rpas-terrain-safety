@@ -298,9 +298,10 @@ export function extractIsoLines(
     }
   }
 
-  // Chain connected segments into continuous polylines
-  const visitedEdges = new Set<string>();
-  const segId = (a: number, b: number) => (a < b ? `${a}:${b}` : `${b}:${a}`);
+  // Chain connected segments into continuous polylines using numeric pair keys (max edgeKey < 2^21 -> safe in 53-bit integer)
+  const visitedEdges = new Set<number>();
+  const KEY_BASE = (stride * (height + 1) + 1) * 2 + 4;
+  const segId = (a: number, b: number) => (a < b ? a * KEY_BASE + b : b * KEY_BASE + a);
   const polylines: [number, number][][] = [];
 
   const traceFrom = (startKey: number, firstNeighbor: number, closeLoop: boolean) => {
